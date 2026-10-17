@@ -1,6 +1,7 @@
 // OpenWeatherMap の無料の API を呼ぶ（サーバーでだけ使う。API キーをブラウザに出さない）
 import "server-only";
 import { buildReport, type OwmCurrent, type OwmForecast, type WeatherReport } from "@/lib/forecast";
+import { geocodeAttempts } from "@/lib/geocodeQuery";
 
 // テストで差し替えられるようにする（ふだんは設定しない）
 const BASE_URL = process.env.OPENWEATHER_BASE_URL ?? "https://api.openweathermap.org";
@@ -40,10 +41,16 @@ function displayName(geo: GeoResult): string {
 
 /** 都市名から緯度・経度を調べる */
 async function geocode(city: string): Promise<WeatherReport["location"]> {
-  const results = await call<GeoResult[]>("/geo/1.0/direct", { q: city, limit: 1 });
-  const geo = results[0];
-  if (!geo) throw new WeatherError(`「${city}」が見つかりませんでした。`, 404);
-  return { name: displayName(geo), country: geo.country, lat: geo.lat, lon: geo.lon };
+  for (const attempt of geocodeAttempts(city)) {
+    const results = await call<GeoResult[]>("/geo/1.0/direct", { q: attempt.query, limit: 5 });
+    const geo = results.find(
+      (g) =>
+        (!attempt.exactName || displayName(g) === attempt.exactName) &&
+        (!attempt.namePrefix || displayName(g).startsWith(attempt.namePrefix)),
+    );
+    if (geo) return { name: displayName(geo), country: geo.country, lat: geo.lat, lon: geo.lon };
+  }
+  throw new WeatherError(`「${city}」が見つかりませんでした。`, 404);
 }
 
 /** 緯度・経度から地名を調べる（見つからなければ空のまま返す） */
