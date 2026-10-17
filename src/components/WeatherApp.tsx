@@ -4,10 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { DayDetail } from "@/components/DayDetail";
 import { ForecastCalendar } from "@/components/ForecastCalendar";
 import type { WeatherReport } from "@/lib/forecast";
+import { addPlace, MAX_PLACES, parsePlaces, removePlace, samePlace, type SavedPlace } from "@/lib/places";
 
-type Target = { city: string } | { lat: number; lon: number };
+// 登録した地点から開くときは、登録したときの名前で表示する
+type Target = { city: string } | { lat: number; lon: number; name?: string };
 
 const LAST_TARGET_KEY = "weather-next:last-target";
+const PLACES_KEY = "weather-next:places";
 const DEFAULT_TARGET: Target = { city: "東京" };
 
 function loadLastTarget(): Target {
@@ -27,12 +30,21 @@ function saveLastTarget(target: Target) {
   }
 }
 
+function savePlaces(places: SavedPlace[]) {
+  try {
+    localStorage.setItem(PLACES_KEY, JSON.stringify(places));
+  } catch {
+    // 保存できなくても、開いている間は使える
+  }
+}
+
 export function WeatherApp() {
   const [query, setQuery] = useState("");
   const [report, setReport] = useState<WeatherReport | null>(null);
   const [selected, setSelected] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [places, setPlaces] = useState<SavedPlace[]>([]);
 
   const load = useCallback(async (target: Target) => {
     setLoading(true);
@@ -44,6 +56,7 @@ export function WeatherApp() {
       const res = await fetch(`/api/weather?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "天気の情報を取得できませんでした。");
+      if ("name" in target && target.name) data.location.name = target.name;
       setReport(data as WeatherReport);
       setSelected(data.today);
       saveLastTarget(target);
@@ -54,12 +67,27 @@ export function WeatherApp() {
     }
   }, []);
 
-  // 前回見た場所（なければ東京）を最初に表示する
+  // 登録した地点を読み、前回見た場所（なければ東京）を最初に表示する
   useEffect(() => {
-    const target = loadLastTarget();
+    let saved: SavedPlace[] = [];
+    try {
+      saved = parsePlaces(localStorage.getItem(PLACES_KEY));
+    } catch {
+      // 読めなければ登録なしとして扱う
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 初回の読み込み
-    void load(target);
+    setPlaces(saved);
+    void load(loadLastTarget());
   }, [load]);
+
+  function updatePlaces(next: SavedPlace[]) {
+    setPlaces(next);
+    savePlaces(next);
+  }
+
+  function openPlace(place: SavedPlace) {
+    void load({ lat: place.lat, lon: place.lon, name: place.name });
+  }
 
   function search(event: React.FormEvent) {
     event.preventDefault();
@@ -93,6 +121,7 @@ export function WeatherApp() {
   }
 
   const day = report?.days.find((d) => d.date === selected) ?? report?.days[0];
+  const isSaved = report ? places.some((p) => samePlace(p, report.location)) : false;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-6">
@@ -131,6 +160,42 @@ export function WeatherApp() {
         </button>
       </form>
 
+      {places.length > 0 && (
+        <nav aria-label="登録した地点">
+          <ul className="flex flex-wrap gap-2">
+            {places.map((place) => {
+              const active = report !== null && samePlace(place, report.location);
+              return (
+                <li
+                  key={`${place.lat},${place.lon}`}
+                  className={`flex items-center rounded-full border text-sm ${
+                    active ? "border-accent bg-accent text-white" : "border-line bg-card"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => openPlace(place)}
+                    disabled={loading}
+                    aria-current={active ? "true" : undefined}
+                    className="py-1.5 pl-4 pr-1 font-bold disabled:opacity-60"
+                  >
+                    {place.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updatePlaces(removePlace(places, place))}
+                    aria-label={`${place.name}を登録から外す`}
+                    className={`rounded-full px-2.5 py-1.5 ${active ? "text-white/80 hover:text-white" : "text-subtle hover:text-foreground"}`}
+                  >
+                    ×
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      )}
+
       {error && (
         <p role="alert" className="rounded-xl bg-red-100 px-4 py-3 text-red-800 dark:bg-red-950 dark:text-red-200">
           {error}
@@ -141,10 +206,25 @@ export function WeatherApp() {
 
       {report && day && (
         <div className={`flex flex-col gap-4 transition-opacity ${loading ? "opacity-50" : ""}`} aria-busy={loading}>
-          <h2 className="text-xl font-bold">
-            📍 {report.location.name}
-            {report.location.country && <span className="ml-2 text-sm font-normal text-subtle">{report.location.country}</span>}
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-xl font-bold">
+              📍 {report.location.name}
+              {report.location.country && <span className="ml-2 text-sm font-normal text-subtle">{report.location.country}</span>}
+            </h2>
+            <button
+              type="button"
+              onClick={() =>
+                updatePlaces(isSaved ? removePlace(places, report.location) : addPlace(places, report.location))
+              }
+              disabled={!isSaved && places.length >= MAX_PLACES}
+              aria-pressed={isSaved}
+              className={`rounded-full border px-4 py-1.5 text-sm font-bold disabled:opacity-50 ${
+                isSaved ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "border-line bg-card"
+              }`}
+            >
+              {isSaved ? "★ 登録済み" : places.length >= MAX_PLACES ? `☆ 登録は ${MAX_PLACES} 件まで` : "☆ この地点を登録"}
+            </button>
+          </div>
           <DayDetail day={day} current={day.date === report.today ? report.current : undefined} />
           <ForecastCalendar days={report.days} today={report.today} selected={day.date} onSelect={setSelected} />
         </div>

@@ -2,6 +2,8 @@
 
 都市名か現在地で、気温・天気・湿度・降水確率を表示する天気予報アプリです。カレンダーで日付を選ぶと、その日の予報（3 時間ごと）に切り替わります。
 
+よく見る地点は「☆ この地点を登録」で 10 件まで登録でき、地点名のボタンを押すとその地点の天気に切り替わります（登録した地点はブラウザに保存します）。
+
 - 天気データ: [OpenWeatherMap](https://openweathermap.org/)の無料プラン（Current Weather・5 day / 3 hour Forecast・Geocoding）
 - Next.js（App Router）・Tailwind CSS・Vercel
 
