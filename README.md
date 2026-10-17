@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# お天気カレンダー
 
-## Getting Started
+都市名か現在地で、気温・天気・湿度・降水確率を表示する天気予報アプリです。カレンダーで日付を選ぶと、その日の予報（3 時間ごと）に切り替わります。
 
-First, run the development server:
+- 天気データ: [OpenWeatherMap](https://openweathermap.org/)の無料プラン（Current Weather・5 day / 3 hour Forecast・Geocoding）
+- Next.js（App Router）・Tailwind CSS・Vercel
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## しくみ
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- ブラウザは自分のサーバーの `/api/weather` だけを呼び、OpenWeatherMap にはサーバー（Route Handler）から問い合わせます。API キーはブラウザに送られません。
+- API キーは環境変数 `OPENWEATHER_API_KEY` から読みます（コードには書いていません）。
+- 予報は 3 時間ごと・5 日先まで。その土地の日付ごとにまとめ、最高/最低気温・平均湿度・最大の降水確率を出します。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 動かし方
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. [OpenWeatherMap](https://home.openweathermap.org/users/sign_up) に登録して API キーを発行する（無料・カード不要。有効になるまで最大 2 時間ほどかかります）
+2. `.env.example` を `.env.local` にコピーしてキーを入れる
 
-## Learn More
+   ```
+   OPENWEATHER_API_KEY=発行したキー
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+3. 起動する
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   ```
+   npm install
+   npm run dev
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+テスト: `npm test`
 
-## Deploy on Vercel
+## Vercel に公開する
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Vercel のプロジェクトの Settings → Environment Variables に `OPENWEATHER_API_KEY` を追加してから、デプロイし直します。
