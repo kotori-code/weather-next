@@ -46,6 +46,7 @@ export type DailyForecast = {
   description: string;
   icon: string;
   hours: HourlyForecast[];
+  hourly: HourlyForecast[]; // 1 時間ごと（3 時間ごとの予報から補った目安）
 };
 
 export type WeatherReport = {
@@ -110,8 +111,44 @@ export function groupByDay(list: OwmItem[], timezoneOffset: number): DailyForeca
       description: representative.weather[0]?.description ?? "",
       icon: representative.weather[0]?.icon ?? "",
       hours: items.map((item) => toHourly(item, timezoneOffset)),
+      hourly: [], // buildReport で入れる
     };
   });
+}
+
+const HOUR = 3600;
+
+/**
+ * 3 時間ごとの予報を、その土地の時刻で 1 時間ごとにする。
+ * 気温・湿度・風速は前後の予報から直線で補い、天気と降水確率は近いほうの予報を使う。
+ */
+export function interpolateHourly(items: OwmItem[], timezoneOffset: number): (HourlyForecast & { date: string })[] {
+  const sorted = [...items].sort((a, b) => a.dt - b.dt);
+  if (sorted.length === 0) return [];
+
+  const result: (HourlyForecast & { date: string })[] = [];
+  // その土地のちょうどの時刻（〇時 00 分）から始める
+  const start = Math.ceil((sorted[0].dt + timezoneOffset) / HOUR) * HOUR - timezoneOffset;
+  let i = 0;
+  for (let t = start; t <= sorted[sorted.length - 1].dt; t += HOUR) {
+    while (i < sorted.length - 1 && sorted[i + 1].dt <= t) i++;
+    const before = sorted[i];
+    const after = sorted[i + 1] ?? before;
+    const ratio = after === before ? 0 : (t - before.dt) / (after.dt - before.dt);
+    const nearest = ratio <= 0.5 ? before : after;
+    const lerp = (from: number, to: number) => from + (to - from) * ratio;
+    result.push({
+      date: localDateTime(t, timezoneOffset).date,
+      time: localDateTime(t, timezoneOffset).time,
+      temp: Math.round(lerp(before.main.temp, after.main.temp)),
+      humidity: Math.round(lerp(before.main.humidity, after.main.humidity)),
+      pop: Math.round((nearest.pop ?? 0) * 100),
+      description: nearest.weather[0]?.description ?? "",
+      icon: nearest.weather[0]?.icon ?? "",
+      windSpeed: Math.round(lerp(before.wind.speed, after.wind.speed) * 10) / 10,
+    });
+  }
+  return result;
 }
 
 /** 現在の天気と予報から、画面に渡す内容を作る */
@@ -135,10 +172,40 @@ export function buildReport(
       description: current.weather[0]?.description ?? "",
       icon: current.weather[0]?.icon ?? "",
       hours: [],
+      hourly: [],
     });
   }
 
+  // 1 時間ごとの予報は、今の時刻（〇時 00 分）を現在の天気にして、その先を予報から補う。
+  // 現在の天気には降水確率がないので、次の予報の値を使う
+  const now = Math.floor((current.dt + timezoneOffset) / HOUR) * HOUR - timezoneOffset;
+  const upcoming = forecast.list.filter((item) => item.dt > now);
+  const timeline = interpolateHourly([{ ...current, dt: now, pop: upcoming[0]?.pop ?? 0 }, ...upcoming], timezoneOffset);
+  for (const day of days) {
+    day.hourly = timeline.filter((hour) => hour.date === day.date);
+  }
+
   return { location, today, current: toCurrent(current), days };
+}
+
+export type WeatherKind = "sunny" | "cloudy" | "rainy";
+
+export const WEATHER_KIND_LABEL: Record<WeatherKind, string> = { sunny: "晴れ", cloudy: "曇り", rainy: "雨・雪" };
+
+/** アイコンの番号を晴れ・曇り・雨（雪・雷を含む）に分ける。霧は曇りにする */
+export function weatherKind(icon: string): WeatherKind {
+  switch (icon.slice(0, 2)) {
+    case "01":
+    case "02":
+      return "sunny";
+    case "09":
+    case "10":
+    case "11":
+    case "13":
+      return "rainy";
+    default:
+      return "cloudy";
+  }
 }
 
 /** OpenWeatherMap のアイコンの番号を絵文字にする（末尾の d/n は昼/夜） */

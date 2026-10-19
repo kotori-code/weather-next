@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { DayDetail } from "@/components/DayDetail";
 import { ForecastCalendar } from "@/components/ForecastCalendar";
+import { LaundryForecastList } from "@/components/LaundryForecastList";
 import type { WeatherReport } from "@/lib/forecast";
 import { addPlace, MAX_PLACES, parsePlaces, removePlace, samePlace, type SavedPlace } from "@/lib/places";
 
@@ -227,6 +228,7 @@ export function WeatherApp() {
           </div>
           <DayDetail day={day} current={day.date === report.today ? report.current : undefined} />
           <ForecastCalendar days={report.days} today={report.today} selected={day.date} onSelect={setSelected} />
+          <LaundryForecastList days={report.days} selected={day.date} onSelect={setSelected} />
         </div>
       )}
 

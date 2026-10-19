@@ -1,3 +1,4 @@
+import { HourSlider } from "@/components/HourSlider";
 import { formatDate } from "@/lib/calendar";
 import { weatherEmoji, type CurrentWeather, type DailyForecast } from "@/lib/forecast";
 
@@ -71,6 +72,8 @@ export function DayDetail({ day, current }: Props) {
           }
         />
       </dl>
+
+      <HourSlider key={day.date} hours={day.hourly} isToday={current !== undefined} />
 
       {day.hours.length > 0 ? (
         <div className="mt-4 overflow-x-auto">
