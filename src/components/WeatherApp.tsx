@@ -1,14 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DayDetail } from "@/components/DayDetail";
 import { ForecastCalendar } from "@/components/ForecastCalendar";
 import { LaundryForecastList } from "@/components/LaundryForecastList";
+import { ShareButtons } from "@/components/ShareButtons";
 import type { WeatherReport } from "@/lib/forecast";
 import { addPlace, MAX_PLACES, parsePlaces, removePlace, samePlace, type SavedPlace } from "@/lib/places";
-
-// 登録した地点から開くときは、登録したときの名前で表示する
-type Target = { city: string } | { lat: number; lon: number; name?: string };
+import { targetFromSearch, type Target } from "@/lib/share";
 
 const LAST_TARGET_KEY = "weather-next:last-target";
 const PLACES_KEY = "weather-next:places";
@@ -46,6 +45,8 @@ export function WeatherApp() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [places, setPlaces] = useState<SavedPlace[]>([]);
+  // 最初に表示する地点（開発中は useEffect が 2 回動くので、1 回目に決めたものを使い回す）
+  const initialTarget = useRef<Target | null>(null);
 
   const load = useCallback(async (target: Target) => {
     setLoading(true);
@@ -68,7 +69,7 @@ export function WeatherApp() {
     }
   }, []);
 
-  // 登録した地点を読み、前回見た場所（なければ東京）を最初に表示する
+  // 登録した地点を読み、共有のリンクの地点（なければ前回見た場所、それもなければ東京）を最初に表示する
   useEffect(() => {
     let saved: SavedPlace[] = [];
     try {
@@ -78,7 +79,13 @@ export function WeatherApp() {
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- 初回の読み込み
     setPlaces(saved);
-    void load(loadLastTarget());
+    if (!initialTarget.current) {
+      const shared = targetFromSearch(window.location.search);
+      // 地点はリンクから外しておく（別の地点に切り替えたあとに再読み込みしても戻らないように）
+      if (shared) window.history.replaceState(null, "", window.location.pathname);
+      initialTarget.current = shared ?? loadLastTarget();
+    }
+    void load(initialTarget.current);
   }, [load]);
 
   function updatePlaces(next: SavedPlace[]) {
@@ -212,19 +219,26 @@ export function WeatherApp() {
               📍 {report.location.name}
               {report.location.country && <span className="ml-2 text-sm font-normal text-subtle">{report.location.country}</span>}
             </h2>
-            <button
-              type="button"
-              onClick={() =>
-                updatePlaces(isSaved ? removePlace(places, report.location) : addPlace(places, report.location))
-              }
-              disabled={!isSaved && places.length >= MAX_PLACES}
-              aria-pressed={isSaved}
-              className={`rounded-full border px-4 py-1.5 text-sm font-bold disabled:opacity-50 ${
-                isSaved ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "border-line bg-card"
-              }`}
-            >
-              {isSaved ? "★ 登録済み" : places.length >= MAX_PLACES ? `☆ 登録は ${MAX_PLACES} 件まで` : "☆ この地点を登録"}
-            </button>
+            <div className="flex flex-wrap items-start justify-end gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  updatePlaces(isSaved ? removePlace(places, report.location) : addPlace(places, report.location))
+                }
+                disabled={!isSaved && places.length >= MAX_PLACES}
+                aria-pressed={isSaved}
+                className={`rounded-full border px-4 py-1.5 text-sm font-bold disabled:opacity-50 ${
+                  isSaved ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "border-line bg-card"
+                }`}
+              >
+                {isSaved ? "★ 登録済み" : places.length >= MAX_PLACES ? `☆ 登録は ${MAX_PLACES} 件まで` : "☆ この地点を登録"}
+              </button>
+              <ShareButtons
+                location={report.location}
+                day={day}
+                current={day.date === report.today ? report.current : undefined}
+              />
+            </div>
           </div>
           <DayDetail day={day} current={day.date === report.today ? report.current : undefined} />
           <ForecastCalendar days={report.days} today={report.today} selected={day.date} onSelect={setSelected} />
